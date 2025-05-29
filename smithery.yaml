@@ -1,0 +1,31 @@
+# Smithery configuration file: https://smithery.ai/docs/build/project-config
+
+startCommand:
+  type: stdio
+  commandFunction:
+    # A JS function that produces the CLI command based on the given config to start the MCP on stdio.
+    |-
+    (config) => ({
+      command: 'node',
+      args: ['dist/index.js'],
+      env: {
+        RTT_API_USERNAME: config.rttApiUsername,
+        RTT_API_PASSWORD: config.rttApiPassword,
+      },
+    })
+  configSchema:
+    # JSON Schema defining the configuration options for the MCP.
+    type: object
+    required:
+      - rttApiUsername
+      - rttApiPassword
+    properties:
+      rttApiUsername:
+        type: string
+        description: RTT API username
+      rttApiPassword:
+        type: string
+        description: RTT API password
+  exampleConfig:
+    rttApiUsername: MY_USERNAME
+    rttApiPassword: MY_PASSWORD
