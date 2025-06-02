@@ -6,7 +6,9 @@ A Model Context Protocol (MCP) server to retrieve train schedules from National 
 
 ## Overview
 
-This project implements a server using the Model Context Protocol (MCP) that allows AI agents to retrieve train information on National Rail trains using the Realtime Trains API. It provides tools for:
+This project implements a server using the Model Context Protocol (MCP) that allows AI agents to retrieve train information on National Rail trains using the Realtime Trains API. 
+
+It provides tools for:
 - get_live_departures
 - get_live_arrivals
 - get_departures_by_date
@@ -15,6 +17,7 @@ This project implements a server using the Model Context Protocol (MCP) that all
 ## Installation
 
 Real Time Trains API account can be created from here: https://api.rtt.io/ 
+
 You will need to note down your API Auth credentials 
 
 ### Installing via Smithery
@@ -58,6 +61,7 @@ npm run start
 }
 ```
 Make sure to replace "/path/to/mcp-national-rail/dist/index.js" with the actual path and add your RTT API username and password which can be created from here: https://api.rtt.io/
+
 5. Restart Claude
 
 ### Development
