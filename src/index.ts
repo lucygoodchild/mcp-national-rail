@@ -259,8 +259,6 @@ class NationalRailMCPServer {
     }
 
     const data = await this.makeApiRequest(endpoint);
-    console.error(endpoint)
-    console.error('Debug - API Response:', JSON.stringify(data, null, 2));
     
     let result = `Live departures for ${data.location.name} (${data.location.crs || data.location.tiploc})\n\n`;
     
@@ -297,7 +295,6 @@ class NationalRailMCPServer {
     }
 
     const data = await this.makeApiRequest(endpoint);
-    console.error('Debug - API Response:', JSON.stringify(data, null, 2));
     
     let result = `Live arrivals for ${data.location.name} (${data.location.crs || data.location.tiploc})\n\n`;
     
