@@ -1,3 +1,5 @@
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/lucygoodchild-mcp-national-rail-badge.png)](https://mseep.ai/app/lucygoodchild-mcp-national-rail)
+
 [![smithery badge](https://smithery.ai/badge/@lucygoodchild/mcp-national-rail)](https://smithery.ai/server/@lucygoodchild/mcp-national-rail)
 
 # mcp-national-rail
