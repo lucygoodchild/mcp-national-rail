@@ -14,6 +14,10 @@ It provides tools for:
 - get_departures_by_date
 - get_arrivals_by_date
 
+## Hosted deployment
+
+A hosted deployment is available on [Fronteir AI](https://fronteir.ai/mcp/lucygoodchild-mcp-national-rail).
+
 ## Installation
 
 Real Time Trains API account can be created from here: https://api.rtt.io/ 
