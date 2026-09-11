@@ -1,436 +1,222 @@
-import './config/setup.js'
+import './config/setup.js';
 import config from './config/index.js';
-import fetch from 'node-fetch';
-import { Server } from "@modelcontextprotocol/sdk/server/index.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import {
-  CallToolRequestSchema,
-  ErrorCode,
-  ListToolsRequestSchema,
-  McpError,
-} from "@modelcontextprotocol/sdk/types.js";
-import { ApiResponse, LocationContainer } from "./types.js";
+import { Server } from '@modelcontextprotocol/sdk/server/index.js';
+import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { CallToolRequestSchema, ErrorCode, ListToolsRequestSchema, McpError } from '@modelcontextprotocol/sdk/types.js';
+import { Allocation, AllocationsByClassResponse, AllocationsByServiceResponse, GeographicLocation, IndividualTemporalData, LocationPair, LocationResponse, NetworkRailLocationLineUpObject, NetworkRailServiceLocation, ServiceResponse } from './types.js';
+
+type ToolArgs = Record<string, unknown>;
+type QueryParams = Record<string, string | number | boolean | undefined>;
+
+process.on('uncaughtException', (error) => {
+    console.error('National Rail MCP uncaught exception:', error);
+});
+
+process.on('unhandledRejection', (reason) => {
+    console.error('National Rail MCP unhandled rejection:', reason);
+});
 
 class NationalRailMCPServer {
-  private server: Server;
-  private baseUrl = "https://api.rtt.io/api/v1";
-  private apiUsername: string;
-  private apiPassword: string;
+    private server: Server;
+    private baseUrl = 'https://data.rtt.io';
+    private bearerToken: string;
 
-  constructor() {
-    this.server = new Server({
-      name: "national-rail-mcp-server",
-      version: "0.1.0",
-      capabilities: {
-        tools: {},
-      },
-    });
-
-    // Get API credentials from environment variables
-    this.apiUsername = config.RTT_API_USERNAME || "";
-    this.apiPassword = config.RTT_API_PASSWORD || "";
-
-    if (!this.apiUsername || !this.apiPassword) {
-      console.error("Warning: RTT_API_USERNAME and RTT_API_PASSWORD environment variables not set");
-    }
-
-    this.setupToolHandlers();
-  }
-
-  private setupToolHandlers() {
-    this.server.setRequestHandler(ListToolsRequestSchema, async () => {
-      return {
-        tools: [
-          {
-            name: "get_live_departures",
-            description: "Get live departure information for a station",
-            inputSchema: {
-              type: "object",
-              properties: {
-                station: {
-                  type: "string",
-                  description: "Station CRS code (3 letters) or TIPLOC",
-                },
-                toStation: {
-                  type: "string",
-                  description: "Optional destination station CRS code or TIPLOC to filter results",
-                },
-              },
-              required: ["station"],
-            },
-          },
-          {
-            name: "get_live_arrivals",
-            description: "Get live arrival information for a station",
-            inputSchema: {
-              type: "object",
-              properties: {
-                station: {
-                  type: "string",
-                  description: "Station CRS code (3 letters) or TIPLOC",
-                },
-                fromStation: {
-                  type: "string",
-                  description: "Optional origin station CRS code or TIPLOC to filter results",
-                },
-              },
-              required: ["station"],
-            },
-          },
-          {
-            name: "get_departures_by_date",
-            description: "Get departure information for a specific date",
-            inputSchema: {
-              type: "object",
-              properties: {
-                station: {
-                  type: "string",
-                  description: "Station CRS code (3 letters) or TIPLOC",
-                },
-                year: {
-                  type: "number",
-                  description: "Year (e.g., 2024)",
-                },
-                month: {
-                  type: "number",
-                  description: "Month (1-12)",
-                },
-                day: {
-                  type: "number",
-                  description: "Day of month (1-31)",
-                },
-                time: {
-                  type: "string",
-                  description: "Optional time in HHMM format (e.g., '0810' or '2315')",
-                },
-                toStation: {
-                  type: "string",
-                  description: "Optional destination station CRS code or TIPLOC to filter results",
-                },
-              },
-              required: ["station", "year", "month", "day"],
-            },
-          },
-          {
-            name: "get_arrivals_by_date",
-            description: "Get arrival information for a specific date",
-            inputSchema: {
-              type: "object",
-              properties: {
-                station: {
-                  type: "string",
-                  description: "Station CRS code (3 letters) or TIPLOC",
-                },
-                year: {
-                  type: "number",
-                  description: "Year (e.g., 2024)",
-                },
-                month: {
-                  type: "number",
-                  description: "Month (1-12)",
-                },
-                day: {
-                  type: "number",
-                  description: "Day of month (1-31)",
-                },
-                time: {
-                  type: "string",
-                  description: "Optional time in HHMM format (e.g., '0810' or '2315')",
-                },
-                fromStation: {
-                  type: "string",
-                  description: "Optional origin station CRS code or TIPLOC to filter results",
-                },
-              },
-              required: ["station", "year", "month", "day"],
-            },
-          },
-        ],
-      };
-    });
-
-    this.server.setRequestHandler(CallToolRequestSchema, async (request) => {
-      const { name, arguments: args } = request.params;
-
-      try {
-        switch (name) {
-          case "get_live_departures":
-            return await this.getLiveDepartures(args);
-          case "get_live_arrivals":
-            return await this.getLiveArrivals(args);
-          case "get_departures_by_date":
-            return await this.getDeparturesByDate(args);
-          case "get_arrivals_by_date":
-            return await this.getArrivalsByDate(args);
-          default:
-            throw new McpError(
-              ErrorCode.MethodNotFound,
-              `Unknown tool: ${name}`
-            );
-        }
-      } catch (error) {
-        throw new McpError(
-          ErrorCode.InternalError,
-          `Error executing ${name}: ${error instanceof Error ? error.message : String(error)}`
+    constructor() {
+        this.server = new Server(
+            { name: 'national-rail-mcp-server', version: '0.2.4' },
+            { capabilities: { tools: {} } },
         );
-      }
-    });
-  }
-
-  private async makeApiRequest(endpoint: string): Promise<ApiResponse> {
-    if (!this.apiUsername || !this.apiPassword) {
-      throw new Error("API credentials not configured. Set RTT_API_USERNAME and RTT_API_PASSWORD environment variables.");
+        this.bearerToken = config.RTT_API_TOKEN;
+        if (!this.bearerToken) console.error('Warning: RTT_API_TOKEN environment variable not set');
+        this.setupToolHandlers();
     }
 
-    const url = `${this.baseUrl}${endpoint}`;
-    const auth = Buffer.from(`${this.apiUsername}:${this.apiPassword}`).toString('base64');
-    
-    const response = await fetch(url, {
-      headers: {
-        'Authorization': `Basic ${auth}`,
-        'Accept': 'application/json',
-      },
-    });
+    private setupToolHandlers() {
+        const locationProperties = {
+            station: { type: 'string', description: 'Station short or long code' },
+            timeFrom: { type: 'string', description: 'Optional ISO 8601 start time' },
+            timeTo: { type: 'string', description: 'Optional ISO 8601 end time' },
+            timeWindow: { type: 'number', description: 'Optional window length in minutes' },
+            detailed: { type: 'boolean', description: 'Request detailed data when authorized' },
+        };
+        this.server.setRequestHandler(ListToolsRequestSchema, async () => ({
+            tools: [
+                { name: 'get_live_departures', description: 'Get live Network Rail departures for a station', inputSchema: { type: 'object', properties: { ...locationProperties, toStation: { type: 'string', description: 'Optional destination short or long code' } }, required: ['station'] } },
+                { name: 'get_live_arrivals', description: 'Get live Network Rail arrivals for a station', inputSchema: { type: 'object', properties: { ...locationProperties, fromStation: { type: 'string', description: 'Optional origin short or long code' } }, required: ['station'] } },
+                { name: 'get_departures_by_date', description: 'Get Network Rail departures in an ISO 8601 time window', inputSchema: { type: 'object', properties: { ...locationProperties, toStation: { type: 'string', description: 'Optional destination short or long code' } }, required: ['station', 'timeFrom'] } },
+                { name: 'get_arrivals_by_date', description: 'Get Network Rail arrivals in an ISO 8601 time window', inputSchema: { type: 'object', properties: { ...locationProperties, fromStation: { type: 'string', description: 'Optional origin short or long code' } }, required: ['station', 'timeFrom'] } },
+                { name: 'get_network_rail_service', description: 'Get detailed Network Rail data for a service', inputSchema: { type: 'object', properties: { uniqueIdentity: { type: 'string', description: 'Service unique identity' }, identity: { type: 'string', description: 'Train identity, such as 1L40' }, departureDate: { type: 'string', description: 'Departure date in YYYY-MM-DD format' }, detailed: { type: 'boolean', description: 'Request detailed data when authorized' } } } },
+                { name: 'get_allocations_by_service', description: 'List rolling stock allocations by TOC and departure date', inputSchema: { type: 'object', properties: { departureDate: { type: 'string', description: 'Departure date in YYYY-MM-DD format' }, toc: { type: 'string', description: 'Train operating company code' } }, required: ['departureDate', 'toc'] } },
+                { name: 'get_allocations_by_class', description: 'List rolling stock allocations by class and departure date', inputSchema: { type: 'object', properties: { departureDate: { type: 'string', description: 'Departure date in YYYY-MM-DD format' }, class: { type: 'string', description: 'Rolling stock class, such as 444' } }, required: ['departureDate', 'class'] } },
+            ],
+        }));
 
-    if (!response.ok) {
-      throw new Error(`API request failed: ${response.status} ${response.statusText}`);
-    }
-
-    return await response.json() as ApiResponse;
-  }
-
- private formatServiceInfo(service: LocationContainer): string {
-    const location = service.locationDetail;
-    let info = `Service ${service.serviceUid} (${service.atocName})\n`;
-    info += `  Train: ${service.trainIdentity}\n`;
-    info += `  Type: ${service.serviceType} (${service.isPassenger ? 'Passenger' : 'Freight'})\n`;
-    
-    if (location.origin && location.origin.length > 0) {
-      info += `  From: ${location.origin.map(o => o.description).join(', ')}\n`;
-    }
-    if (location.destination && location.destination.length > 0) {
-      info += `  To: ${location.destination.map(d => d.description).join(', ')}\n`;
-    }
-
-    if (location.gbttBookedDeparture) {
-      info += `  Scheduled Departure: ${location.gbttBookedDeparture}\n`;
-    }
-    if (location.realtimeDeparture) {
-      info += `  ${location.realtimeDepartureActual ? 'Actual' : 'Expected'} Departure: ${location.realtimeDeparture}\n`;
-      if (location.realtimeGbttDepartureLateness !== undefined) {
-        info += `  Delay: ${location.realtimeGbttDepartureLateness > 0 ? '+' : ''}${location.realtimeGbttDepartureLateness} minutes\n`;
-      }
-    }
-
-    if (location.gbttBookedArrival) {
-      info += `  Scheduled Arrival: ${location.gbttBookedArrival}\n`;
-    }
-    if (location.realtimeArrival) {
-      info += `  ${location.realtimeArrivalActual ? 'Actual' : 'Expected'} Arrival: ${location.realtimeArrival}\n`;
-      if (location.realtimeGbttArrivalLateness !== undefined) {
-        info += `  Delay: ${location.realtimeGbttArrivalLateness > 0 ? '+' : ''}${location.realtimeGbttArrivalLateness} minutes\n`;
-      }
-    }
-
-    if (location.platform) {
-      info += `  Platform: ${location.platform}${location.platformConfirmed ? ' (Confirmed)' : ''}${location.platformChanged ? ' (Changed)' : ''}\n`;
-    }
-
-    if (service.countdownMinutes !== undefined) {
-      info += `  Due in: ${service.countdownMinutes} minutes\n`;
-    }
-
-    if (location.cancelReasonShortText) {
-      info += `  Cancellation: ${location.cancelReasonShortText}\n`;
-    }
-
-    if (location.displayAs) {
-      info += `  Status: ${location.displayAs}\n`;
-    }
-
-    return info;
-}
-
-  private async getLiveDepartures(args: any) {
-    const { station, toStation } = args;
-    let endpoint = `/json/search/${station}`;
-    
-    if (toStation) {
-      endpoint += `/to/${toStation}`;
-    }
-
-    const data = await this.makeApiRequest(endpoint);
-    
-    let result = `Live departures for ${data.location.name} (${data.location.crs || data.location.tiploc})\n\n`;
-    
-    if (data.filter) {
-      if (data.filter.destination) {
-        result += `Filtered to: ${data.filter.destination.name}\n\n`;
-      }
-    }
-    
-     if (!data.services || data.services.length === 0) {
-        result += "No services found.\n";
-    } else {
-        data.services.forEach(service => {
-            result += this.formatServiceInfo(service) + "\n";
+        this.server.setRequestHandler(CallToolRequestSchema, async (request) => {
+            const { name, arguments: args = {} } = request.params;
+            try {
+                const toolArgs = args as ToolArgs;
+                switch (name) {
+                    case 'get_live_departures': return await this.getLocation(toolArgs, 'departures');
+                    case 'get_live_arrivals': return await this.getLocation(toolArgs, 'arrivals');
+                    case 'get_departures_by_date': return await this.getLocation(toolArgs, 'departures');
+                    case 'get_arrivals_by_date': return await this.getLocation(toolArgs, 'arrivals');
+                    case 'get_network_rail_service': return await this.getNetworkRailService(toolArgs);
+                    case 'get_allocations_by_service': return await this.getAllocationsByService(toolArgs);
+                    case 'get_allocations_by_class': return await this.getAllocationsByClass(toolArgs);
+                    default: throw new McpError(ErrorCode.MethodNotFound, `Unknown tool: ${name}`);
+                }
+            } catch (error) {
+                throw new McpError(ErrorCode.InternalError, `Error executing ${name}: ${error instanceof Error ? error.message : String(error)}`);
+            }
         });
     }
 
-    return {
-      content: [
-        {
-          type: "text",
-          text: result.trim()
-        },
-      ],
-    };
-  }
-
-  private async getLiveArrivals(args: any) {
-    const { station, fromStation } = args;
-    let endpoint = `/json/search/${station}/arrivals`;
-    
-    if (fromStation) {
-      endpoint = `/json/search/${station}/from/${fromStation}/arrivals`;
+    private async makeApiRequest<T>(path: string, params: QueryParams = {}): Promise<T | null> {
+        if (!this.bearerToken) throw new Error('API credentials not configured. Set RTT_API_TOKEN environment variable.');
+        const url = new URL(`${this.baseUrl}${path}`);
+        Object.entries(params).forEach(([key, value]) => { if (value !== undefined && value !== '') url.searchParams.set(key, String(value)); });
+        const headers: Record<string, string> = { Authorization: `Bearer ${this.bearerToken}`, Accept: 'application/json' };
+        if (config.RTT_API_VERSION) headers.Version = config.RTT_API_VERSION;
+        const response = await fetch(url, { headers });
+        if (response.status === 204) return null;
+        const body = await response.text();
+        if (!response.ok) {
+            const retryAfter = response.headers.get('retry-after');
+            let detail = body;
+            try {
+                const errorBody = JSON.parse(body) as { error?: string; message?: string };
+                detail = errorBody.error ?? errorBody.message ?? body;
+            } catch {
+                // Keep the raw response body when the API does not return JSON.
+            }
+            throw new Error(`API request failed: ${response.status} ${response.statusText}: ${detail}.${retryAfter ? ` Retry after ${retryAfter} seconds.` : ''}`);
+        }
+        return body ? JSON.parse(body) as T : null;
     }
 
-    const data = await this.makeApiRequest(endpoint);
-    
-    let result = `Live arrivals for ${data.location.name} (${data.location.crs || data.location.tiploc})\n\n`;
-    
-    if (data.filter) {
-      if (data.filter?.origin?.name) {
-        result += `Filtered from: ${data.filter?.origin?.name}\n\n`;
-      }
+    private value(args: ToolArgs, name: string): string | number | boolean | undefined {
+        const value = args[name];
+        return typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean' ? value : undefined;
     }
 
-     if (!data.services || data.services.length === 0) {
-        result += "No services found.\n";
-    } else {
-        data.services.forEach(service => {
-            result += this.formatServiceInfo(service) + "\n";
-        });
+    private requiredString(args: ToolArgs, name: string): string {
+        const value = this.value(args, name);
+        if (typeof value !== 'string' || !value) throw new Error(`${name} is required`);
+        return value;
     }
 
-    return {
-      content: [
-        {
-          type: "text",
-          text: result.trim(),
-        },
-      ],
-    };
-  }
-
-  private async getDeparturesByDate(args: any) {
-    const { station, year, month, day, time, toStation } = args;
-    let endpoint = `/json/search/${station}`;
-    
-    if (toStation) {
-      endpoint += `/to/${toStation}`;
-    }
-    
-    const paddedMonth = month.toString().padStart(2, '0');
-    const paddedDay = day.toString().padStart(2, '0');
-    endpoint += `/${year}/${paddedMonth}/${paddedDay}`;
-    
-    if (time) {
-      endpoint += `/${time}`;
+    private async getLocation(args: ToolArgs, direction: 'departures' | 'arrivals') {
+        const params: QueryParams = {
+            code: this.requiredString(args, 'station'),
+            filterFrom: direction === 'arrivals' ? this.value(args, 'fromStation') as string : undefined,
+            filterTo: direction === 'departures' ? this.value(args, 'toStation') as string : undefined,
+            timeFrom: this.value(args, 'timeFrom') as string,
+            timeTo: this.value(args, 'timeTo') as string,
+            timeWindow: this.value(args, 'timeWindow') as number,
+            detailed: this.value(args, 'detailed') as boolean,
+        };
+        const data = await this.makeApiRequest<LocationResponse>('/gb-nr/location', params);
+        const services = data?.services ?? [];
+        let result = `${direction === 'departures' ? 'Departures' : 'Arrivals'} for ${this.locationName(data?.query?.location)}\n`;
+        if (data?.query?.timeFrom) result += `Window: ${data.query.timeFrom}${data.query.timeTo ? ` to ${data.query.timeTo}` : ''}\n`;
+        result += `\n${services.length ? services.map((service) => this.formatLineupService(service)).join('\n') : 'No services found.'}`;
+        return this.textResult(result.trim());
     }
 
-    const data = await this.makeApiRequest(endpoint);
-    
-    let result = `Departures for ${data.location.name} (${data.location.crs || data.location.tiploc}) on ${year}-${paddedMonth}-${paddedDay}`;
-    if (time) {
-      result += ` at ${time}`;
-    }
-    result += '\n\n';
-    
-    if (data.filter) {
-      if (data.filter.destination) {
-        result += `Filtered to: ${data.filter.destination.name}\n\n`;
-      }
-    }
-
-     if (!data.services || data.services.length === 0) {
-        result += "No services found.\n";
-    } else {
-        data.services.forEach(service => {
-            result += this.formatServiceInfo(service) + "\n";
-        });
+    private async getNetworkRailService(args: ToolArgs) {
+        const uniqueIdentity = this.value(args, 'uniqueIdentity') as string;
+        const identity = this.value(args, 'identity') as string;
+        const departureDate = this.value(args, 'departureDate') as string;
+        if (!uniqueIdentity && (!identity || !departureDate)) throw new Error('Provide uniqueIdentity or both identity and departureDate');
+        const data = await this.makeApiRequest<ServiceResponse>('/gb-nr/service', { uniqueIdentity, identity, departureDate, detailed: this.value(args, 'detailed') as boolean });
+        const service = data?.service;
+        if (!service) return this.textResult('Service not found.');
+        const metadata = service.scheduleMetadata;
+        let result = `Service ${metadata?.uniqueIdentity ?? data?.query?.uniqueIdentity ?? 'unknown'}\n${this.formatMetadata(metadata)}`;
+        result += `From: ${this.formatPairs(service.origin)}\nTo: ${this.formatPairs(service.destination)}\n\n`;
+        result += service.locations?.length ? service.locations.map((location) => this.formatServiceLocation(location)).join('\n') : 'No locations found.';
+        if (service.allocationData?.length) result += `\n\nAllocations:\n${service.allocationData.map((allocation) => this.formatAllocation(allocation)).join('\n')}`;
+        return this.textResult(result.trim());
     }
 
-    return {
-      content: [
-        {
-          type: "text",
-          text: result.trim(),
-        },
-      ],
-    };
-  }
-
-  private async getArrivalsByDate(args: any) {
-    const { station, year, month, day, time, fromStation } = args;
-    let endpoint = `/json/search/${station}`;
-    
-    if (fromStation) {
-      endpoint = `/json/search/${station}/from/${fromStation}`;
-    }
-    
-    const paddedMonth = month.toString().padStart(2, '0');
-    const paddedDay = day.toString().padStart(2, '0');
-    endpoint += `/${year}/${paddedMonth}/${paddedDay}`;
-    
-    if (time) {
-      endpoint += `/${time}`;
-    }
-    
-    endpoint += '/arrivals';
-
-    const data = await this.makeApiRequest(endpoint);
-    
-    let result = `Arrivals for ${data.location.name} (${data.location.crs || data.location.tiploc}) on ${year}-${paddedMonth}-${paddedDay}`;
-    if (time) {
-      result += ` at ${time}`;
-    }
-    result += '\n\n';
-    
-     if (data.filter) {
-      if (data.filter?.origin?.name) {
-        result += `Filtered from: ${data.filter?.origin?.name}\n\n`;
-      }
+    private async getAllocationsByService(args: ToolArgs) {
+        const data = await this.makeApiRequest<AllocationsByServiceResponse>('/gb-nr/allocations/by-service', { departureDate: this.requiredString(args, 'departureDate'), toc: this.requiredString(args, 'toc') });
+        const services = data?.services ?? [];
+        const result = services.length ? services.map((service) => `${this.formatMetadata(service.scheduleMetadata)}From: ${this.formatPairs(service.origin)}\nTo: ${this.formatPairs(service.destination)}\n${(service.allocations ?? []).map((allocation) => this.formatAllocation(allocation)).join('\n')}`).join('\n') : 'No allocations found.';
+        return this.textResult(result.trim());
     }
 
-     if (!data.services || data.services.length === 0) {
-        result += "No services found.\n";
-    } else {
-        data.services.forEach(service => {
-            result += this.formatServiceInfo(service) + "\n";
-        });
+    private async getAllocationsByClass(args: ToolArgs) {
+        const data = await this.makeApiRequest<AllocationsByClassResponse>('/gb-nr/allocations/by-class', { departureDate: this.requiredString(args, 'departureDate'), class: this.requiredString(args, 'class') });
+        const identities = data?.identities ?? {};
+        const result = Object.entries(identities).length ? Object.entries(identities).map(([identity, allocations]) => `Class member ${identity}\n${allocations.map((allocation) => this.formatAllocation(allocation)).join('\n')}`).join('\n') : 'No allocations found.';
+        return this.textResult(result.trim());
     }
 
-    return {
-      content: [
-        {
-          type: "text",
-          text: result.trim(),
-        },
-      ],
-    };
-  }
-
-  async run() {
-    try {
-        const transport = new StdioServerTransport();
-        await this.server.connect(transport);
-        console.error("National Rail MCP server running on stdio");
-    } catch (error) {
-        console.error("Failed to start server:", error);
-        process.exit(1);
+    private formatLineupService(service: NetworkRailLocationLineUpObject): string {
+        const temporal = service.temporalData;
+        let result = `Service ${service.scheduleMetadata?.uniqueIdentity ?? service.scheduleMetadata?.identity ?? 'unknown'}\n${this.formatMetadata(service.scheduleMetadata)}`;
+        result += `From: ${this.formatPairs(service.origin)}\nTo: ${this.formatPairs(service.destination)}\n`;
+        result += this.formatTemporal('Departure', temporal?.departure) + this.formatTemporal('Arrival', temporal?.arrival);
+        const platform = service.locationMetadata?.platform;
+        if (platform?.actual || platform?.planned) result += `Platform: ${platform.actual ?? platform.planned}\n`;
+        if (temporal?.displayAs) result += `Status: ${temporal.displayAs}\n`;
+        if (service.reasons?.length) result += `Reasons: ${service.reasons.map((reason) => reason.shortText ?? reason.code).filter(Boolean).join('; ')}\n`;
+        return result;
     }
-  }
+
+    private formatServiceLocation(location: NetworkRailServiceLocation): string {
+        let result = `${this.locationName(location.location)}\n`;
+        result += this.formatTemporal('Arrival', location.temporalData?.arrival) + this.formatTemporal('Departure', location.temporalData?.departure);
+        const platform = location.locationMetadata?.platform;
+        if (platform?.actual || platform?.planned) result += `Platform: ${platform.actual ?? platform.planned}\n`;
+        return result;
+    }
+
+    private formatMetadata(metadata: NetworkRailLocationLineUpObject['scheduleMetadata']): string {
+        if (!metadata) return '';
+        const operator = metadata.operator?.name ?? metadata.operator?.code;
+        let result = operator ? `Operator: ${operator}\n` : '';
+        if (metadata.trainReportingIdentity) result += `Train: ${metadata.trainReportingIdentity}\n`;
+        if (metadata.modeType || metadata.inPassengerService !== undefined) result += `Type: ${metadata.modeType ?? 'TRAIN'}${metadata.inPassengerService === undefined ? '' : metadata.inPassengerService ? ' (Passenger)' : ' (Freight)'}\n`;
+        return result;
+    }
+
+    private formatTemporal(label: string, temporal?: IndividualTemporalData): string {
+        if (!temporal) return '';
+        const scheduled = temporal.scheduleAdvertised ?? temporal.scheduleInternal;
+        const actual = temporal.realtimeActual ?? temporal.realtimeForecast ?? temporal.realtimeEstimate;
+        let result = scheduled ? `${label} scheduled: ${scheduled}\n` : '';
+        if (actual) result += `${label} ${temporal.realtimeActual ? 'actual' : 'expected'}: ${actual}\n`;
+        if (temporal.realtimeAdvertisedLateness !== undefined) result += `Delay: ${temporal.realtimeAdvertisedLateness > 0 ? '+' : ''}${temporal.realtimeAdvertisedLateness} minutes\n`;
+        if (temporal.isCancelled) result += `${label}: Cancelled\n`;
+        return result;
+    }
+
+    private formatPairs(pairs?: LocationPair[]): string {
+        return pairs?.map((pair) => pair.location?.description ?? pair.location?.shortCodes?.[0]).filter(Boolean).join(', ') || 'Unknown';
+    }
+
+    private formatAllocation(allocation: Allocation): string {
+        const items = allocation.allocationItems?.map((item) => `${item.stockType ?? 'stock'} ${item.identity ?? '(identity suppressed)'}`).join(', ');
+        return `Allocation ${allocation.allocationIndex ?? 'unknown'}: ${items || 'No vehicle details'}`;
+    }
+
+    private locationName(location?: GeographicLocation): string {
+        return location?.description ?? location?.shortCodes?.join(', ') ?? 'Unknown location';
+    }
+
+    private textResult(text: string) { return { content: [{ type: 'text' as const, text }] }; }
+
+    async run() {
+        try {
+            await this.server.connect(new StdioServerTransport());
+            console.error('National Rail MCP server running on stdio');
+        } catch (error) {
+            console.error('National Rail MCP failed to start:', error);
+            process.exit(1);
+        }
+    }
 }
 
 const server = new NationalRailMCPServer();

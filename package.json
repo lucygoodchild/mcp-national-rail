@@ -1,11 +1,13 @@
 {
   "name": "national-rail-mcp-server",
-  "version": "0.1.0",
+  "version": "0.2.4",
   "description": "Model Context Protocol server for National Rail train information via RTT API",
   "main": "dist/index.js",
   "type": "module",
   "scripts": {
     "build": "tsc && node -e \"require('fs').chmodSync('dist/index.js', '755')\"",
+    "mcpb:validate": "mcpb validate manifest.json",
+    "mcpb:pack": "npm run build && mcpb validate manifest.json && mcpb pack . dist/national-rail.mcpb",
     "start": "node dist/index.js",
     "dev": "tsx src/index.ts"
   },
@@ -13,9 +15,10 @@
     "national-rail-mcp-server": "./dist/index.js"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^0.4.0",
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "dotenv": "^16.5.0",
-    "node-fetch": "^3.3.2"
+    "nvm": "0.0.4",
+    "zod": "^3.25.0"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

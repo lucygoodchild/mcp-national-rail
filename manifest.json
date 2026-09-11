@@ -1,0 +1,54 @@
+{
+  "manifest_version": "0.3",
+  "name": "national-rail",
+  "display_name": "National Rail",
+  "version": "0.2.4",
+  "description": "Query Network Rail train services, live station lineups, and rolling-stock allocations.",
+  "long_description": "A Realtime Trains Network Rail MCP server providing live departures and arrivals, detailed service locations, and rolling-stock allocation data.",
+  "author": {
+    "name": "Lucy Goodchild"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/lucygoodchild/mcp-national-rail"
+  },
+  "documentation": "https://github.com/lucygoodchild/mcp-national-rail#readme",
+  "license": "MIT",
+  "keywords": ["rail", "trains", "national rail", "network rail", "realtime trains"],
+  "privacy_policies": ["https://www.realtimetrains.co.uk/legal/"],
+  "server": {
+    "type": "node",
+    "entry_point": "dist/index.js",
+    "mcp_config": {
+      "command": "node",
+      "args": ["${__dirname}/dist/index.js"],
+      "env": {
+        "RTT_API_TOKEN": "${user_config.rtt_api_token}",
+        "RTT_API_VERSION": "${user_config.rtt_api_version}"
+      }
+    }
+  },
+  "user_config": {
+    "rtt_api_token": {
+      "type": "string",
+      "title": "Realtime Trains API token",
+      "description": "Bearer token from the Realtime Trains API portal.",
+      "sensitive": true,
+      "required": true
+    },
+    "rtt_api_version": {
+      "type": "string",
+      "title": "API version",
+      "description": "Optional API version date. Leave blank to use the latest version.",
+      "default": "2026-04-09",
+      "required": false
+    }
+  },
+  "tools_generated": true,
+  "compatibility": {
+    "platforms": ["win32", "darwin", "linux"],
+    "runtimes": {
+      "node": ">=18"
+    }
+  }
+}

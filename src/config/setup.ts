@@ -8,6 +8,8 @@ const rootDir = join(__dirname, '..', '..');
 
 const result = dotenv.config({ path: join(rootDir, '.env') });
 
-if (result.error) {
-    throw new Error('Failed to load .env file');
+const dotenvError = result.error as (Error & { code?: string }) | undefined;
+
+if (dotenvError && dotenvError.code !== 'ENOENT') {
+    throw new Error(`Failed to load .env file: ${dotenvError.message}`);
 }
